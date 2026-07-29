@@ -45,7 +45,7 @@ def chunks_handle(respChunks, agent):
 
 def interrupts_handle(interrupt: Interrupt) -> list:
     """处理中断信息"""
-    # print("interrupt", interrupt)
+    print("interrupt", interrupt)
 
     decisions = []
     action_requests = interrupt.value["action_requests"]
