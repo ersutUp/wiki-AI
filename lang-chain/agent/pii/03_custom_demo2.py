@@ -18,17 +18,13 @@ def check_messages(state: AgentState, runtime: Runtime) -> dict[str, Any] | None
     messages = state["messages"]
     if messages:
         content = messages[0].content
-        tmpAgent = create_agent(
-            model=glm_llm,
-            system_prompt="""
-                你是信息检查助手，检查信息内是否包含份量、重量、体重等信息。这些信息一旦出现就返回“不安全”，你只返回“安全”或者“不安全”两种值。
-            """,
-        )
-        tmpRes = tmpAgent.invoke(
-            {"messages": [HumanMessage(content=content)]},
-        )
-        #
-        if tmpRes["messages"][-1].content == "不安全":
+
+        check_msg=f"""
+            你是信息检查助手，检查信息内是否包含份量、重量、体重等信息。这些信息一旦出现就返回“不安全”，你只返回“安全”或者“不安全”两种值。
+            这是检测的内容：{content}
+        """
+        tmpRes = glm_llm.invoke([HumanMessage(content=check_msg)])
+        if tmpRes.content == "不安全":
             return {
                 "messages": [{
                         "role": "assistant",
