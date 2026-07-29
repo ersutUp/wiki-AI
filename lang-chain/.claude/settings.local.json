@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PYTHONPATH=/Users/ersut/my/code/lang-chain .venv/bin/python /tmp/trace_warn.py)"
+    ]
+  }
+}
