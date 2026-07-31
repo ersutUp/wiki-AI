@@ -17,3 +17,8 @@ langgraph-checkpoint-mysql==3.0.0
 PyMySQL==1.2.0
 aiomysql==0.3.2
 asyncmy==0.2.11
+
+# 实现 MCP 协议的库
+fastmcp==3.4.5
+# 用于将 FastMCP 与 LangChain 集成
+langchain-mcp-adapters==0.3.1
