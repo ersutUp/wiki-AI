@@ -1,15 +1,22 @@
 import asyncio
+import os
 
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
-
-# 获取当前项目的根目录
-import os
+from pydantic import BaseModel
 
 from my_llm import glm_llm
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+# 用 BaseModel 声明 agent 的输入结构。
+# langgraph 对 ainvoke 输入的类型上界里只认 TypedDict/dataclass/BaseModel，
+# 而 TypedDict 在 PyCharm 的结构化 Protocol 匹配下经常失效（见 langgraph 源码注释），
+# BaseModel 是名义类型匹配，PyCharm 能稳定识别。
+class AgentInput(BaseModel):
+    messages: list
 
 
 
@@ -39,7 +46,7 @@ async def agent():
 
     # 这里需要异步（ainvoke） 因为 mcp 工具是异步的
     res = await agent.ainvoke(
-        {"messages": [m]},
+        AgentInput(messages=[m]),
     )
     print(res)
     print(res["messages"][-1].content)

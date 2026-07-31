@@ -1,7 +1,7 @@
 """
 MCP 服务器 通过 http 接收请求
 """
-import random
+import json
 
 from fastmcp import FastMCP
 
@@ -10,9 +10,9 @@ mcp = FastMCP("http_demo")
 # 内存中的用户存储，key 为用户 id，value 为用户信息
 # 注意：仅用于 demo，进程重启后数据丢失
 _users: dict[int, dict] = {
-    1: {"id": 1, "name": "张三", "age": 25, "email": "zhangsan@example.com"},
-    2: {"id": 2, "name": "李四", "age": 30, "email": "lisi@example.com"},
-    3: {"id": 3, "name": "王五", "age": 28, "email": "wangwu@example.com"},
+    1: {"user_id": 1, "name": "张三", "age": 25, "email": "zhangsan@example.com"},
+    2: {"user_id": 2, "name": "李四", "age": 30, "email": "lisi@example.com"},
+    3: {"user_id": 3, "name": "王五", "age": 28, "email": "wangwu@example.com"},
 }
 
 # 下一个可用的用户 id（自增主键）
@@ -37,7 +37,7 @@ def add_user(name: str, age: int, email: str = "") -> str:
             return f"用户名 {name} 已存在，添加失败"
 
     user_id = _next_id
-    _users[user_id] = {"id": user_id, "name": name, "age": age, "email": email}
+    _users[user_id] = {"user_id": user_id, "name": name, "age": age, "email": email}
     _next_id += 1
     return f"用户 {name} 添加成功，id 为 {user_id}"
 
@@ -54,9 +54,9 @@ def get_user_by_id(user_id: int) -> str:
     """
     user = _users.get(user_id)
     if user is None:
-        return f"用户 id {user_id} 不存在"
+        return json.dumps({}, ensure_ascii=False)
 
-    return str(user)
+    return json.dumps(user, ensure_ascii=False)
 
 
 @mcp.tool

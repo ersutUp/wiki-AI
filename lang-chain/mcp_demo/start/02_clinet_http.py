@@ -4,13 +4,7 @@ from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-# 获取当前项目的根目录
-import os
-
 from my_llm import glm_llm
-
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 
 
 async def getMcpTools():
