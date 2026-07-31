@@ -5,7 +5,7 @@ import random
 
 from fastmcp import FastMCP
 
-mcp_stdio = FastMCP("http_demo")
+mcp = FastMCP("http_demo")
 
 # 内存中的用户存储，key 为用户 id，value 为用户信息
 # 注意：仅用于 demo，进程重启后数据丢失
@@ -18,7 +18,7 @@ _users: dict[int, dict] = {
 # 下一个可用的用户 id（自增主键）
 _next_id = 4
 
-@mcp_stdio.tool
+@mcp.tool
 def add_user(name: str, age: int, email: str = "") -> str:
     """添加用户，id 由系统自动分配
 
@@ -42,7 +42,7 @@ def add_user(name: str, age: int, email: str = "") -> str:
     return f"用户 {name} 添加成功，id 为 {user_id}"
 
 
-@mcp_stdio.tool
+@mcp.tool
 def get_user_by_id(user_id: int) -> str:
     """根据用户 id 查询用户信息
 
@@ -59,7 +59,7 @@ def get_user_by_id(user_id: int) -> str:
     return str(user)
 
 
-@mcp_stdio.tool
+@mcp.tool
 def get_user(name: str) -> str:
     """根据用户名查询用户信息
 
@@ -76,7 +76,7 @@ def get_user(name: str) -> str:
     return f"用户 {name} 不存在"
 
 
-@mcp_stdio.tool
+@mcp.tool
 def list_users() -> str:
     """列出所有用户信息
 
@@ -89,7 +89,7 @@ def list_users() -> str:
     return str(list(_users.values()))
 
 
-@mcp_stdio.tool
+@mcp.tool
 def delete_user(user_id: int) -> str:
     """根据用户 id 删除指定用户
 
@@ -108,7 +108,7 @@ def delete_user(user_id: int) -> str:
 
 
 if __name__ == "__main__":
-    mcp_stdio.run(
+    mcp.run(
         transport="http",
         # 启动 HTTP 服务器的端口
         port=28008,

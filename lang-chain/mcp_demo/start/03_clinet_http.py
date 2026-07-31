@@ -23,7 +23,7 @@ async def http_tool_interceptor(request: MCPToolCallRequest, handler) -> MCPTool
     """
     从上下文获取用户ID，并将其添加到工具调用参数中
     """
-    print(f"request: {request}")
+    # print(f"request: {request}")
     userContext = request.runtime.context
     if userContext is None:
         pass
@@ -32,7 +32,7 @@ async def http_tool_interceptor(request: MCPToolCallRequest, handler) -> MCPTool
     else:
         user_id = userContext.user_id
         request = request.override(args={**request.args, "user_id": user_id})
-        print(f"request: {request}")
+        # print(f"request: {request}")
 
     return await handler(request)
 
