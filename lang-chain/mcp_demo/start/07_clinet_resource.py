@@ -12,36 +12,34 @@ from pydantic import BaseModel
 
 from my_llm import glm_llm
 
-
-async def getMcpTools():
-    mcp_client = MultiServerMCPClient(
-        {
-            "http_demo": {
-                "transport": "http",
-                "url": "http://localhost:28008/my-mcp",
-            },
+mcp_client = MultiServerMCPClient(
+    {
+        "http_demo": {
+            "transport": "http",
+            "url": "http://localhost:28008/my-mcp",
         },
-        handle_tool_errors=False, # 工具报错后直接抛出异常
-    )
+    },
+)
 
-    tools = await mcp_client.get_tools()
-    print(tools)
 
-    return tools
+async def getUserResource():
+    resources = await mcp_client.get_resources("http_demo",uris=["user://get_user/1,2"])
+    user = resources[0].as_string()
+    print(user)
+    return user
 
 
 async def agent():
-    tools = await getMcpTools()
+    user_str = await getUserResource()
     agent = create_agent(
         model=glm_llm,
-        tools=tools,
-        system_prompt="""
-            你是用户信息管理查询助手，
-            若网络抖动等错误，请重试5次。
+        system_prompt=f"""
+            你是用户信息管理助手，
+            这是用户信息 {user_str}
         """,
     )
     #
-    m = HumanMessage("查询下用户 99 登记的信息？")
+    m = HumanMessage("展示所有用户信息？")
 
     # 这里需要异步（ainvoke） 因为 mcp 工具是异步的
     res = await agent.ainvoke(
