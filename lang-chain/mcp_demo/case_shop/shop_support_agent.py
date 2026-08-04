@@ -164,8 +164,17 @@ async def elicitation_handler(
 
     # 接受时才需要用户填写内容
     if action == "accept":
-        # 服务端用的是 response_type=str，对应表单里的 "value" 字段
-        value = _read("请输入内容：")
+        enum_values = params.requestedSchema["properties"]["value"].get("enum", None)
+        if enum_values is not None:
+            while True:
+                enum_value = _read(f"请输入内容（{','.join(enum_values)}）：")
+                if enum_value in enum_values:
+                    value = enum_value
+                    break
+                print("输入有误，请重新输入。")
+        else:
+            # 服务端用的是 response_type=str，对应表单里的 "value" 字段
+            value = _read("请输入内容：")
         return ElicitResult(action="accept", content={"value": value})
 
     # 拒绝/取消时无需提交表单内容

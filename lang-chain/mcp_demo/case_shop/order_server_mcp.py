@@ -70,7 +70,7 @@ orders: dict[str, dict] = {
         "order_id": "ORD20260803002",
         "user_id": 3,
         "product": "USB-C 扩展坞",
-        "amount": 159.00,
+        "amount": 3159.00,
         "quantity": 1,
         "status": DELIVERED,
         "created_at": "2026-08-03 11:10:00",
@@ -192,7 +192,7 @@ async def refund_order(order_id: str, user_id: int, ctx: Context) -> str:
     else:
         # 大额订单 与用户 再次确认情况
         ok = "确定"
-        elicit_result = await ctx.elicit(f"当前订单金额为{amount},确认退款吗？",response_type=list[ok,"取消"])
+        elicit_result = await ctx.elicit(f"当前订单金额为{amount},确认退款吗？",response_type=[ok,"取消"])
         if elicit_result.action == "accept" :
             if elicit_result.data == ok:
                 order["status"] = REFUNDED
