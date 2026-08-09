@@ -1,0 +1,19 @@
+from os import getenv
+
+import dotenv
+
+dotenv.load_dotenv(override=True)
+
+OPEN_SANDBOX_API_KEY = getenv("OPEN_SANDBOX_API_KEY")
+TAVILY_API_KEY = getenv("TAVILY_API_KEY")
+
+OPENAI_API_KEY = getenv("OPENAI_API_KEY")
+OPENAI_BASE_URL = getenv("OPENAI_BASE_URL")
+
+FUNCLOUD_API_KEY = getenv("FUNCLOUD_API_KEY")
+FUNCLOUD_BASE_URL = getenv("FUNCLOUD_BASE_URL")
+
+MYSQL_PASSWORD = getenv("MYSQL_PASSWORD")
+
+WXPUBLIC_APP_ID = getenv("WXPUBLIC_APP_ID")
+WXPUBLIC_SECURE_KEY = getenv("WXPUBLIC_SECURE_KEY")

@@ -1,0 +1,34 @@
+# DeepAgents 子智能体声明式配置示例
+# 该文件由 src/agent/multi_agent/yaml_loader.py 解析（只解析子智能体部分）。
+#
+# 工具 / 模型引用支持三种写法：
+#   1) 别名：先在代码里 register_tool / register_model 注册，这里直接写别名
+#   2) 动态导入：写成 "模块:属性" 形式（无需注册）
+#   3) 模型还支持 "provider:model" 字符串，原样交给 deepagents 解析
+#
+# 注意：这里不配置主智能体的 model / tools / backend —— 那些由调用方
+#       在代码里传给 create_deep_agent 决定。
+
+# 顶层可以是直接的列表，也可以包成 subagents: [...]。
+subagents:
+  - name: researcher
+    description: |
+      负责联网检索与资料调研。当需要搜索网络、收集某个主题的信息时使用。
+    system_prompt: |
+      你是一个研究子智能体。接到任务后，使用 websearch 工具检索，
+      然后把关键信息整理成结构化要点返回给主智能体。
+    # 子智能体可单独指定模型（不填则继承主智能体）
+    model: deepseek_flash4
+    tools:
+      - websearch           # 别名，需在代码中注册
+      # - agent.tools.web:websearch   # 也可以直接用动态导入
+
+  - name: writer
+    description: |
+      负责内容撰写与总结。当需要把调研结果整理成文章、报告、摘要时使用。
+    system_prompt: |
+      你是一个写作子智能体。基于主智能体提供的素材，撰写清晰、条理分明的中文内容。
+    # 不指定 model 与 tools，自动继承主智能体
+    model: gpt55
+    # tools:
+    #   - websearch
