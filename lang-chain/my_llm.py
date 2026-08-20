@@ -43,12 +43,12 @@ funcloude_claude_llm = init_chat_model(
     base_url=FUNCLOUD_BASE_URL,
 )
 
-# funcloude_deepseek_llm = init_chat_model(
-#     model="deepseek-v4-pro",
-#     model_provider="openai",
-#     api_key=f"{FUNCLOUD_API_KEY}/v1/official/chat/completions",
-#     base_url=FUNCLOUD_BASE_URL,
-# )
+funcloude_deepseek_llm = init_chat_model(
+    model="deepseek-v4-pro",
+    model_provider="openai",
+    api_key=FUNCLOUD_API_KEY,
+    base_url=f"{FUNCLOUD_BASE_URL}/v1",
+)
 
 # funcloude_deepseek_llm = ChatOpenAI(
 #     api_key=FUNCLOUD_API_KEY,
