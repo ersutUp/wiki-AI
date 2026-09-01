@@ -1,0 +1,11 @@
+# Milvus 官方 Python SDK — 连接和管理 Milvus 向量数据库
+pymilvus>=2.5.0
+
+# 科学计算库 — 用于创建和操作向量数据（ndarray）
+numpy>=1.26.0
+
+# 环境变量管理 — 从 .env 文件加载 Milvus 连接配置
+python-dotenv>=1.0.0
+
+# 文本 embedding 模型 — 将文本转为语义向量
+sentence-transformers>=3.0.0

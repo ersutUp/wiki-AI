@@ -41,3 +41,6 @@ htmlcov/
 *.log
 logs/
 *.tmp
+flags.txt
+data
+project/milvus_demo/volumes
