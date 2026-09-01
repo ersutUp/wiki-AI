@@ -26,20 +26,42 @@ queries = [
 query_embeddings = model.encode(queries)  # shape: (3, 1024)
 
 # ──────────────────────────────────────────────────────────────────────
-# 3. 执行语义搜索
+# 3. 逐条查询 — 每次只查一个向量，适合交互式场景
 # ──────────────────────────────────────────────────────────────────────
+print("=" * 60)
+print("📌 逐条查询（纯向量搜索）")
+print("=" * 60)
+
 for i, (query, embedding) in enumerate(zip(queries, query_embeddings)):
     results = client.search(
         collection_name=COLLECTION_NAME,
-        data=[embedding.tolist()],  # 查询向量，包在列表里
+        data=[embedding.tolist()],  # 单个向量
         filter='category == "计算机科学"',  # 只在计算机科学分类中搜索
-        limit=3,  # 返回 top-3
-        output_fields=["title", "category", "description"],  # 返回的标量字段
+        limit=3,
+        output_fields=["title", "category", "description"],
     )
 
-    print(f"\n{'=' * 60}")
-    print(f"🔍 混合搜索: \"{query}\" + filter: category == \"计算机科学\"")
-    print(f"{'=' * 60}")
+    print(f"\n🔍 [{i+1}] {query}+ filter: category == \"计算机科学\"")
     for j, hit in enumerate(results[0]):
-        print(f"  [{j + 1}] {hit['entity']['category']} / {hit['entity']['title']}  (相似度: {hit['distance']:.4f})")
-        print(f"      {hit['entity']['description']}")
+        print(f"        [结果{j+1}] {hit['entity']['category']} / {hit['entity']['title']}  (相似度: {hit['distance']:.4f})")
+
+# ──────────────────────────────────────────────────────────────────────
+# 4. 批量查询 — 一次传多个向量，比逐条更高效，适合批量处理
+# ──────────────────────────────────────────────────────────────────────
+print(f"\n{'=' * 60}")
+print("📌 批量查询（向量 + 标量混合搜索）")
+print("=" * 60)
+
+results = client.search(
+    collection_name=COLLECTION_NAME,
+    data=[emb.tolist() for emb in query_embeddings],  # 多个向量，一次请求
+    filter='category == "计算机科学"',  # 只在计算机科学分类中搜索
+    limit=3,
+    output_fields=["title", "category", "description"],
+)
+
+# results 是嵌套列表：results[i] 对应 queries[i] 的结果
+for i, (query, hits) in enumerate(zip(queries, results)):
+    print(f"\n🔍 [{i+1}] {query} + filter: category == \"计算机科学\"")
+    for j, hit in enumerate(hits):
+        print(f"        [结果{j+1}] {hit['entity']['category']} / {hit['entity']['title']}  (相似度: {hit['distance']:.4f})")

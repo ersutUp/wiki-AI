@@ -131,53 +131,53 @@ result = client.insert(collection_name="book_search", data=data)
 
 ## 3. 向量语义搜索（vector_search_demo.py）
 
-**核心流程：** 连接 + 加载模型 → 输入查询 → 编码 → 纯向量搜索 → 向量+标量混合搜索
+**核心流程：** 连接 + 加载模型 → 输入查询 → 编码 → 逐条查询 → 批量查询
 
-### 纯向量搜索
+### 逐条查询（纯向量搜索）
+
+每次只查一个向量，适合交互式场景：
 
 ```python
-queries = [
-    "如何设计可复用的代码？",
-    "有哪些排序算法？",
-    "怎样用 Python 写网站？",
-]
-
-query_embeddings = model.encode(queries)
-
 for query, embedding in zip(queries, query_embeddings):
     results = client.search(
         collection_name="book_search",
-        data=[embedding.tolist()],
+        data=[embedding.tolist()],     # 单个向量
+        filter='category == "计算机科学"',  # 标量过滤
         limit=3,
-        output_fields=["title", "description"],
+        output_fields=["title", "category", "description"],
     )
 
-    for hit in results[0]:
+    for hit in results[0]:  # results[0] 是当前查询的结果列表
         print(f"{hit['entity']['title']}  (相似度: {hit['distance']:.4f})")
 ```
 
-### 向量 + 标量混合搜索
+### 批量查询（向量 + 标量混合搜索）
+
+一次传多个向量，单次网络请求完成所有查询，比逐条高效：
 
 ```python
-query = "算法相关的书"
-query_embedding = model.encode([query])
-
+# 所有查询向量一次传入
 results = client.search(
     collection_name="book_search",
-    data=[query_embedding[0].tolist()],
+    data=[emb.tolist() for emb in query_embeddings],  # 多个向量
     filter='category == "计算机科学"',  # 先标量过滤，再向量匹配
     limit=3,
     output_fields=["title", "category", "description"],
 )
+
+# results[i] 对应 queries[i] 的结果
+for i, (query, hits) in enumerate(zip(queries, results)):
+    for hit in hits:  # 直接遍历，不用 results[0]
+        print(f"{hit['entity']['title']}  (相似度: {hit['distance']:.4f})")
 ```
 
 ### 要点
 
-- `search()` 的 `data` 参数是列表，`[向量]` 表示一个查询
-- `results` 是嵌套列表：外层每条查询，内层每个结果；单个查询时 `results[0]` 才是结果列表
+- `search()` 的 `data` 参数是**列表**，单向量 `[vec]`，多向量 `[vec1, vec2, ...]`
+- `results` 是嵌套列表：`results[i]` 对应第 i 条查询的结果
 - `hit['distance']` 是 COSINE 相似度，越接近 1 越相关
 - `filter` 参数实现**混合搜索**：先在标量维度缩小候选集，再在候选集内做向量相似度匹配，两步都在 Milvus 内部完成
-- `search()` 走向量索引做语义匹配，`query()` 走标量过滤做精确查找，两者互补
+- 逐条查询适合交互式（用户输入一条查一条），批量查询适合离线处理（一次查完所有）
 
 ---
 
