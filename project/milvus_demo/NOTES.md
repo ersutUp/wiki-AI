@@ -13,7 +13,9 @@ milvus_demo/
 ├── create_collection_demo.py  # 1. 创建集合
 ├── insert_demo.py             # 2. 插入数据
 ├── vector_search_demo.py      # 3. 向量语义搜索
-└── scalar_search_demo.py      # 4. 标量过滤查询
+├── scalar_search_demo.py      # 4. 标量过滤查询
+├── sort_demo.py               # 5. 排序查询
+└── aggregate_demo.py          # 6. 聚合统计
 ```
 
 ### 依赖（requirements.txt）
@@ -30,8 +32,8 @@ python-dotenv>=1.0.0              # 环境变量管理
 MILVUS_URI = "http://localhost:19530"       # Milvus 连接地址
 COLLECTION_NAME = "book_search"             # 集合名称
 VECTOR_FIELD = "embedding"                  # 向量字段名
-MODEL_NAME = "intfloat/multilingual-e5-large"  # embedding 模型
-VECTOR_DIM = 1024                           # 向量维度
+MODEL_NAME = "Qwen/Qwen3-VL-Embedding-2B"   # embedding 模型
+VECTOR_DIM = 2048                           # 向量维度
 ```
 
 ---
@@ -56,8 +58,9 @@ schema = client.create_schema(
 schema.add_field("id", DataType.INT64, is_primary=True)
 schema.add_field("title", DataType.VARCHAR, max_length=512)
 schema.add_field("category", DataType.VARCHAR, max_length=64)
+schema.add_field("price", DataType.DOUBLE)
 schema.add_field("description", DataType.VARCHAR, max_length=2048)
-schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1024)
+schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=2048)
 
 # 定义向量索引
 index_params = client.prepare_index_params()
@@ -94,20 +97,20 @@ client.create_collection(
 ```python
 from sentence_transformers import SentenceTransformer
 
-model = SentenceTransformer("intfloat/multilingual-e5-large")
+model = SentenceTransformer("Qwen/Qwen3-VL-Embedding-2B")
 
 # 准备原始数据
 books = [
-    {"title": "算法导论", "category": "计算机科学",
+    {"title": "算法导论", "category": "计算机科学", "price": 128.00,
      "description": "算法领域的经典教材，系统讲解排序、图算法..."},
-    {"title": "Python 编程：从入门到实践", "category": "编程语言",
+    {"title": "Python 编程：从入门到实践", "category": "编程语言", "price": 89.00,
      "description": "面向初学者的 Python 教程..."},
     # ...
 ]
 
 # 批量编码 — 把所有 description 转成向量（比逐条快很多）
 descriptions = [b["description"] for b in books]
-embeddings = model.encode(descriptions)  # → ndarray, shape: (5, 1024)
+embeddings = model.encode(descriptions)  # → ndarray, shape: (5, 2048)
 
 # 组装数据 — 将 ndarray 每行转为 list
 data = [
@@ -225,6 +228,109 @@ client.query(collection_name="book_search",
 
 ---
 
+## 5. 排序查询（sort_demo.py）
+
+**核心流程：** 连接 → 按 id 升序/降序 → 按字符串字段排序 → 多字段排序
+
+### 关键代码
+
+```python
+# 按 id 升序
+client.query(
+    collection_name="book_search",
+    filter="id >= 0",
+    output_fields=["id", "title", "category"],
+    order_by="id:asc",
+    limit=10,
+)
+
+# 按 id 降序
+client.query(
+    collection_name="book_search",
+    filter="id >= 0",
+    output_fields=["id", "title", "category"],
+    order_by="id:desc",
+    limit=10,
+)
+
+# 按字符串字段排序
+client.query(
+    collection_name="book_search",
+    filter="id >= 0",
+    output_fields=["id", "title", "category"],
+    order_by="category:asc",
+    limit=10,
+)
+
+# 多字段排序 — 先按 category 升序，再按 id 降序
+client.query(
+    collection_name="book_search",
+    filter="id >= 0",
+    output_fields=["id", "title", "category"],
+    order_by=["category:asc", "id:desc"],
+    limit=10,
+)
+```
+
+### 要点
+
+- `order_by` 格式为 `"字段名:asc"` 或 `"字段名:desc"`（冒号分隔）
+- 多字段排序：`order_by=["category:asc", "id:desc"]`，按列表顺序依次应用
+- 字符串字段按字典序排列
+
+---
+
+## 6. 聚合统计（aggregate_demo.py）
+
+**核心流程：** 连接 → 按分类统计数量 → 数值聚合（sum/avg/min/max）
+
+需要 Milvus 2.4+ 服务端支持。
+
+### 关键代码
+
+```python
+# 按分类统计书籍数量
+client.query(
+    collection_name="book_search",
+    filter="",
+    output_fields=["count(*)", "category"],
+    group_by_fields=["category"],
+    limit=10,
+)
+
+# 按分类统计 price 的各类聚合值
+client.query(
+    collection_name="book_search",
+    filter="",
+    output_fields=[
+        "count(*)", "sum(price)", "avg(price)",
+        "min(price)", "max(price)", "category",
+    ],
+    group_by_fields=["category"],
+    limit=10,
+)
+```
+
+### 支持的聚合函数
+
+| 函数 | 说明 | 适用字段类型 |
+|------|------|------------|
+| `count(*)` | 每组记录数 | — |
+| `sum(字段)` | 求和 | 数值类型 |
+| `avg(字段)` | 平均值 | 数值类型 |
+| `min(字段)` | 最小值 | 数值类型 |
+| `max(字段)` | 最大值 | 数值类型 |
+
+### 要点
+
+- `group_by_fields` 按指定字段分组，`output_fields` 中写聚合函数取别名
+- 聚合结果中函数名即为 key，如 `row['sum(price)']`、`row['avg(price)']`
+- `filter=""` 表示不筛选，全量统计
+- 聚合函数只能作用于 Schema 中显式定义的字段，动态字段不支持
+- 聚合功能需要 Milvus 2.4+ 服务端，旧版本会报错
+
+---
+
 ## 关键概念
 
 ### connections 单例机制
@@ -260,7 +366,7 @@ connections = Connections()  # 模块级单例，import 时创建
 
 | 模型 | 维度 | 大小 | 中文效果 |
 |------|------|------|----------|
-| `all-MiniLM-L6-v2` | 384 | 80MB | 一般 |
+| `Qwen/Qwen3-VL-Embedding-2B` | 2048 | ~4GB | 多模态语义理解，中英都好 |
 | `intfloat/multilingual-e5-large` | 1024 | 2.2GB | 多语言，中英都好 |
 | `BAAI/bge-m3` | 1024 | 2.2GB | 多语言，中英都强 |
 | `BAAI/bge-large-zh-v1.5` | 1024 | 1.3GB | 纯中文优秀 |

@@ -27,6 +27,7 @@ schema = client.create_schema(
 schema.add_field("id", DataType.INT64, is_primary=True)
 schema.add_field("title", DataType.VARCHAR, max_length=512)  # 书名
 schema.add_field("category", DataType.VARCHAR, max_length=64)  # 分类
+schema.add_field("price", DataType.DOUBLE)  # 价格
 schema.add_field("description", DataType.VARCHAR, max_length=2048)  # 内容摘要
 schema.add_field(VECTOR_FIELD, DataType.FLOAT_VECTOR, dim=VECTOR_DIM)
 

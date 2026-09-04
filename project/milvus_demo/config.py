@@ -8,5 +8,5 @@ COLLECTION_NAME = "book_search"
 VECTOR_FIELD = "embedding"
 
 # embedding 模型
-MODEL_NAME = "intfloat/multilingual-e5-large"
-VECTOR_DIM = 1024  # 与模型输出维度一致
+MODEL_NAME = "Qwen/Qwen3-VL-Embedding-2B"
+VECTOR_DIM = 2048  # 与模型输出维度一致
