@@ -1,0 +1,21 @@
+# ===== 直接依赖（仅列出项目代码实际 import 的包，传递依赖会自动安装） =====
+
+# 核心框架：Agent / ChatModel / Middleware / Structured Output
+langchain==1.4.0
+
+# 模型接入：OpenAI 兼容接口（用于接 GLM 等兼容服务）
+langchain-openai>=1.6.0
+langchain-anthropic>=1.7.1
+# 配置与数据校验
+python-dotenv==1.2.3
+pydantic==2.13.5
+
+neo4j==6.3.0
+langchain-neo4j>=0.10.0
+langchain-experimental>=0.4.2
+
+langchain-community>=0.4.2
+wikipedia>=1.4.0
+
+# 实体名繁简转换（标准化用）
+opencc-python-reimplemented>=0.1.7

@@ -44,3 +44,7 @@ logs/
 flags.txt
 data
 project/milvus_demo/volumes
+project/neo4j_demo/neo4j/data/
+project/neo4j_demo/neo4j/logs/
+project/neo4j_demo/neo4j
+wikipedia_docs.json
