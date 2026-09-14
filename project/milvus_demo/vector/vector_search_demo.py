@@ -35,6 +35,7 @@ print("=" * 60)
 for i, (query, embedding) in enumerate(zip(queries, query_embeddings)):
     results = client.search(
         collection_name=COLLECTION_NAME,
+        anns_field=VECTOR_FIELD,
         data=[embedding.tolist()],  # 单个向量
         filter='category == "计算机科学"',  # 只在计算机科学分类中搜索
         limit=3,
@@ -54,6 +55,7 @@ print("=" * 60)
 
 results = client.search(
     collection_name=COLLECTION_NAME,
+    anns_field=VECTOR_FIELD,
     data=[emb.tolist() for emb in query_embeddings],  # 多个向量，一次请求
     filter='category == "计算机科学"',  # 只在计算机科学分类中搜索
     limit=3,

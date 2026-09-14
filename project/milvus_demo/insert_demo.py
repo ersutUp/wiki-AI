@@ -1,8 +1,12 @@
-"""Milvus 向量数据库示例 — 使用 embedding 模型将文本转为向量后插入。"""
+"""Milvus 向量数据库示例 — 使用 embedding 模型将文本转为向量后插入。
+
+插入数据只包含标量字段和稠密向量：
+稀疏向量由集合上注册的 BM25 Function 在服务端自动生成，无需传入。
+"""
 
 from pymilvus import MilvusClient
 from sentence_transformers import SentenceTransformer
-from config import MILVUS_URI, COLLECTION_NAME, VECTOR_FIELD, MODEL_NAME
+from config import MILVUS_URI, COLLECTION_NAME, VECTOR_FIELD, TEXT_FIELD, MODEL_NAME
 
 # ──────────────────────────────────────────────────────────────────────
 # 1. 连接 Milvus + 加载 embedding 模型
@@ -10,6 +14,7 @@ from config import MILVUS_URI, COLLECTION_NAME, VECTOR_FIELD, MODEL_NAME
 client = MilvusClient(uri=MILVUS_URI)
 print("✅ 已连接到 Milvus")
 
+# 只需要稠密向量模型 — 稀疏向量由 Milvus 服务端的 BM25 Function 生成
 model = SentenceTransformer(MODEL_NAME)
 print("✅ embedding 模型已加载")
 
@@ -54,6 +59,7 @@ descriptions = [b["description"] for b in books]
 embeddings = model.encode(descriptions)  # 返回 ndarray，shape: (5, 384)
 
 # 组装插入数据：将 ndarray 每行转为 list
+# 稀疏向量不用管 — BM25 Function 在服务端从 description 自动生成
 data = [
     {**b, VECTOR_FIELD: emb.tolist()} for b, emb in zip(books, embeddings)
 ]
@@ -70,6 +76,8 @@ print(f"   生成的 ID: {result['ids']}")
 # ──────────────────────────────────────────────────────────────────────
 # 4. 验证：查询插入的数据
 # ──────────────────────────────────────────────────────────────────────
+client.flush(COLLECTION_NAME)  # 刷盘，确保 query 立即可见
+# 注意：Function 输出字段（sparse_embedding）是服务端内部数据，不允许直接查询
 query_result = client.query(
     collection_name=COLLECTION_NAME,
     filter="id >= 0",
