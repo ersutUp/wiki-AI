@@ -1,0 +1,19 @@
+requests>=2.32,<3.0
+PyMuPDF>=1.28,<2.0
+qwen_vl_utils
+tqdm>=4.67,<5.0
+Pillow>=12.0,<13.0
+numpy>=2.4,<3.0
+pydantic>=2.13,<3.0
+langchain>=1.4,<2.0
+langchain-core>=1.6,<2.0
+langchain-text-splitters>=1.1,<2.0
+langchain-experimental>=0.4,<1.0
+langchain-openai>=1.6,<2.0
+# 文本 embedding 模型 — 将文本转为语义向量
+sentence-transformers>=6.0.1
+# 图像 embedding 模型 — 将图像转为语义向量
+sentence-transformers[image]>=6.0.1
+
+accelerate>=1.1.0
+langchain-huggingface
