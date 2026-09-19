@@ -17,3 +17,10 @@ sentence-transformers[image]>=6.0.1
 
 accelerate>=1.1.0
 langchain-huggingface
+
+ragas==0.4.3
+# 读取.env 文件
+python-dotenv>=1.0.1
+
+# Milvus 官方 Python SDK — 连接和管理 Milvus 向量数据库
+pymilvus>=2.5.0

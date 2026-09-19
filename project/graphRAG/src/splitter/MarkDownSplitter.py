@@ -47,6 +47,25 @@ PAGE_FILE_PATTERN = re.compile(r'^(?P<name>.+)_page_(?P<n>\d+)\.md$')
 # 图片占位标记正则
 IMAGE_PLACEHOLDER = re.compile(r'<<IMAGE:([^>]+)>>')
 
+# ── metadata 键名常量 ────────────────────────────────────
+KEY_DOC_TYPE = 'doc_type'
+KEY_START_PAGE = 'start_page'
+KEY_END_PAGE = 'end_page'
+KEY_IMAGE_PATH = 'image_path'
+KEY_ALT = 'alt'
+KEY_PAGE = 'page'
+KEY_PRECEDING_TEXT = 'preceding_text'
+KEY_FOLLOWING_TEXT = 'following_text'
+KEY_CHUNK_INDEX = 'chunk_index'
+KEY_PATH = 'path'
+
+# doc_type 取值常量
+DOC_TYPE_TEXT = 'text'
+DOC_TYPE_IMAGE = 'image'
+
+# 图片上下文截取长度（前文/后文各取的字符数）
+IMAGE_CONTEXT_CHARS = 300
+
 class MarkdownDirectorySplitter:
     """
     Markdown 目录级流式切割器
@@ -82,7 +101,8 @@ class MarkdownDirectorySplitter:
             # ⚠️原版正则不支持中文句号，这里修复中文分句！
             sentence_split_regex=r'(?<=[。！？.!?])\s+',
             breakpoint_threshold_type="percentile",
-            breakpoint_threshold_amount=85  # 默认70，落差前30%才切分
+            breakpoint_threshold_amount=85,  # 默认70，落差前30%才切分
+            min_chunk_size=50
         )
         self._semantic_config.update(semantic_config or {})
 
@@ -120,17 +140,24 @@ class MarkdownDirectorySplitter:
         spec = self._embeddings_spec
 
         if isinstance(spec, str):
-            # 模型名 → 延迟加载 HuggingFaceEmbeddings
+            # 模型名 → 通过共享缓存的模型包装为 langchain 兼容对象
             try:
                 from langchain_huggingface import HuggingFaceEmbeddings
-                spec = HuggingFaceEmbeddings(model_name=spec)
+                spec = HuggingFaceEmbeddings(model=spec)
             except Exception as e:
                 print(e)
                 return None
         elif spec is not None and hasattr(spec, 'encode'):
             pass
         elif spec is None:
-            return None
+            # 使用 共享缓存 的模型
+            # 模型名 → 通过共享缓存获取 SentenceTransformer，再包装为 langchain 兼容对象
+            try:
+                from utils.model_loader import get_langchain_embeddings
+                spec = get_langchain_embeddings(spec)
+            except Exception as e:
+                print(e)
+                return None
 
         try:
             self._semantic_splitter = SemanticChunker(
@@ -182,15 +209,15 @@ class MarkdownDirectorySplitter:
 
                 if self._should_merge(buffered, sec, i):
                     buffered['text'] += '\n\n' + sec.page_content
-                    buffered['end_page'] = page_no
+                    buffered[KEY_END_PAGE] = page_no
                 else:
                     if buffered:
                         results.extend(self._flush(buffered))
                     buffered = {
                         'text': sec.page_content,
                         'headers': sec.metadata,
-                        'start_page': page_no,
-                        'end_page': page_no,
+                        KEY_START_PAGE: page_no,
+                        KEY_END_PAGE: page_no,
                     }
 
         if buffered:
@@ -200,7 +227,7 @@ class MarkdownDirectorySplitter:
         results = self._insert_image_documents(results, image_registry)
 
         for idx, doc in enumerate(results):
-            doc.metadata['chunk_index'] = idx
+            doc.metadata[KEY_CHUNK_INDEX] = idx
 
         return results
 
@@ -320,9 +347,9 @@ class MarkdownDirectorySplitter:
                 return match.group(0)
 
             images[img_id] = {
-                'path': str(img_path),
-                'alt': alt,
-                'page': page_no,
+                KEY_PATH: str(img_path),
+                KEY_ALT: alt,
+                KEY_PAGE: page_no,
             }
             return f'<<IMAGE:{img_id}>>'
 
@@ -335,16 +362,16 @@ class MarkdownDirectorySplitter:
         """输出缓冲章节，超出阈值则切割"""
         text = buffered['text']
         headers = buffered['headers']
-        start_page = buffered['start_page']
-        end_page = buffered['end_page']
+        start_page = buffered[KEY_START_PAGE]
+        end_page = buffered[KEY_END_PAGE]
 
         base_doc = Document(
             page_content=text,
             metadata={
                 **headers,
-                'start_page': start_page,
-                'end_page': end_page,
-                'doc_type': 'text',
+                KEY_START_PAGE: start_page,
+                KEY_END_PAGE: end_page,
+                KEY_DOC_TYPE: DOC_TYPE_TEXT,
             }
         )
 
@@ -358,9 +385,9 @@ class MarkdownDirectorySplitter:
                 chunks = self.fallback_splitter.split_documents([base_doc])
             for chunk in chunks:
                 chunk.metadata.update({
-                    'start_page': start_page,
-                    'end_page': end_page,
-                    'doc_type': 'text',
+                    KEY_START_PAGE: start_page,
+                    KEY_END_PAGE: end_page,
+                    KEY_DOC_TYPE: DOC_TYPE_TEXT,
                 })
             return chunks
         else:
@@ -414,7 +441,7 @@ class MarkdownDirectorySplitter:
             if clean_text:
                 results[i] = Document(
                     page_content=clean_text,
-                    metadata={**doc.metadata, 'doc_type': 'text'}
+                    metadata={**doc.metadata, KEY_DOC_TYPE: DOC_TYPE_TEXT}
                 )
                 i += 1
             else:
@@ -429,14 +456,14 @@ class MarkdownDirectorySplitter:
                 results.insert(i, Document(
                     page_content="",
                     metadata={
-                        'doc_type': 'image',
-                        'image_path': img_info['path'],
-                        'alt': img_info['alt'],
-                        'page': img_info['page'],
-                        'preceding_text': '',
-                        'following_text': '',
-                        'start_page': doc.metadata.get('start_page'),
-                        'end_page': doc.metadata.get('end_page'),
+                        KEY_DOC_TYPE: DOC_TYPE_IMAGE,
+                        KEY_IMAGE_PATH: img_info[KEY_PATH],
+                        KEY_ALT: img_info[KEY_ALT],
+                        KEY_PAGE: img_info[KEY_PAGE],
+                        KEY_PRECEDING_TEXT: '',
+                        KEY_FOLLOWING_TEXT: '',
+                        KEY_START_PAGE: doc.metadata.get(KEY_START_PAGE),
+                        KEY_END_PAGE: doc.metadata.get(KEY_END_PAGE),
                     }
                 ))
                 i += 1
@@ -445,21 +472,21 @@ class MarkdownDirectorySplitter:
         """
         为图片 Document 补全 preceding_text / following_text
 
-        前文：上一个文本块末尾 300 字符
-        后文：下一个文本块开头 300 字符
+        前文：上一个文本块末尾 IMAGE_CONTEXT_CHARS 字符
+        后文：下一个文本块开头 IMAGE_CONTEXT_CHARS 字符
         """
         for i, doc in enumerate(results):
-            if doc.metadata.get('doc_type') != 'image':
+            if doc.metadata.get(KEY_DOC_TYPE) != DOC_TYPE_IMAGE:
                 continue
             for j in range(i - 1, -1, -1):
                 prev = results[j]
-                if prev.metadata.get('doc_type') == 'text' and prev.page_content:
-                    doc.metadata['preceding_text'] = prev.page_content[-300:]
+                if prev.metadata.get(KEY_DOC_TYPE) == DOC_TYPE_TEXT and prev.page_content:
+                    doc.metadata[KEY_PRECEDING_TEXT] = prev.page_content[-IMAGE_CONTEXT_CHARS:]
                     break
             for j in range(i + 1, len(results)):
                 nxt = results[j]
-                if nxt.metadata.get('doc_type') == 'text' and nxt.page_content:
-                    doc.metadata['following_text'] = nxt.page_content[:300]
+                if nxt.metadata.get(KEY_DOC_TYPE) == DOC_TYPE_TEXT and nxt.page_content:
+                    doc.metadata[KEY_FOLLOWING_TEXT] = nxt.page_content[:IMAGE_CONTEXT_CHARS]
                     break
 
 
@@ -499,7 +526,6 @@ if __name__ == '__main__':
     print(start)
     split_doc:list[Document] = split_markdown_directory(
         "/Users/ersut/my/code/wiki-AI/project/graphRAG/output/PDF合并",
-                 embeddings="Qwen/Qwen3-VL-Embedding-2B"
     )
     end = os.times().elapsed
     print(end)
