@@ -19,6 +19,10 @@ from typing import Optional
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
+from config.logger import get_app_logger
+
+_logger = get_app_logger("splitter")
+
 # 可选导入
 try:
     from langchain_experimental.text_splitter import SemanticChunker
@@ -145,7 +149,7 @@ class MarkdownDirectorySplitter:
                 from langchain_huggingface import HuggingFaceEmbeddings
                 spec = HuggingFaceEmbeddings(model=spec)
             except Exception as e:
-                print(e)
+                _logger.warning("Embedding 模型加载失败: %s", e)
                 return None
         elif spec is not None and hasattr(spec, 'encode'):
             pass
@@ -156,7 +160,7 @@ class MarkdownDirectorySplitter:
                 from utils.model_loader import get_langchain_embeddings
                 spec = get_langchain_embeddings(spec)
             except Exception as e:
-                print(e)
+                _logger.warning("Embedding 模型加载失败: %s", e)
                 return None
 
         try:
@@ -164,7 +168,8 @@ class MarkdownDirectorySplitter:
                 embeddings=spec,
                 **self._semantic_config,
             )
-        except Exception:
+        except Exception as e:
+            _logger.warning("SemanticChunker 初始化失败: %s", e)
             return None
 
         return self._semantic_splitter
@@ -187,7 +192,10 @@ class MarkdownDirectorySplitter:
 
         page_files = self._iter_page_files(dir_path)
         if not page_files:
+            _logger.warning("目录 %s 下未找到页文件（_page_N.md）", dir_path)
             return []
+
+        _logger.info("开始切分目录 %s，共 %d 个页文件", dir_path, len(page_files))
 
         image_registry = {}
         results = []
@@ -202,6 +210,7 @@ class MarkdownDirectorySplitter:
             image_registry.update(page_images)
 
             sections = self.header_splitter.split_text(page_text)
+            _logger.debug("第 %d 页按标题切分为 %d 个 section", page_no, len(sections))
 
             for i, sec in enumerate(sections):
                 sec.metadata = self._inherit_parent_headers(sec.metadata, active_headers)
@@ -229,6 +238,10 @@ class MarkdownDirectorySplitter:
         for idx, doc in enumerate(results):
             doc.metadata[KEY_CHUNK_INDEX] = idx
 
+        _logger.info(
+            "目录切分完成，共 %d 个结果块（文本块 + 图片块），图片注册表 %d 条",
+            len(results), len(image_registry),
+        )
         return results
 
     # ── 跨页合并判断 ──────────────────────────────────────
@@ -354,6 +367,8 @@ class MarkdownDirectorySplitter:
             return f'<<IMAGE:{img_id}>>'
 
         new_text = IMAGE_PATTERN.sub(replace_image, text)
+        if images:
+            _logger.debug("第 %d 页提取 %d 张图片", page_no, len(images))
         return new_text, images
 
     # ── Flush ─────────────────────────────────────────────
@@ -376,13 +391,17 @@ class MarkdownDirectorySplitter:
         )
 
         if len(text) > self.chunk_threshold:
+            _logger.debug("文本块超过阈值 %d（当前 %d 字符），触发语义切割", self.chunk_threshold, len(text))
             semantic = self._get_semantic_splitter()
             if semantic:
                 # 语义切割，超长的块继续切，最多 3 次
+                original_count = 1
                 chunks = [base_doc]
                 chunks = self._semantic_split(chunks, semantic)
+                _logger.debug("语义切割完成，%d 个块 → %d 个块", original_count, len(chunks))
             else:
                 chunks = self.fallback_splitter.split_documents([base_doc])
+                _logger.debug("语义切割不可用，回退到规则切割，产出 %d 个块", len(chunks))
             for chunk in chunks:
                 chunk.metadata.update({
                     KEY_START_PAGE: start_page,
@@ -526,6 +545,8 @@ def split_markdown_directory(
     return splitter.split_directory(dir_path)
 
 if __name__ == '__main__':
+    from config.logger import configure_logging
+    configure_logging()
     start = os.times().elapsed
     print(start)
     split_doc:list[Document] = split_markdown_directory(

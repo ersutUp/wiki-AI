@@ -1,0 +1,8 @@
+
+conda activate dotsORC_1_5
+
+cd /root/autodl-tmp/dotsORC_1_5
+
+vllm serve DotsMOCR15  --served-model-name dotsmorc:1.5 --tensor-parallel-size 1 --gpu-memory-utilization 0.9 --chat-template-content-format string --trust-remote-code --port 6009
+# 隧道
+ssh -CNg -L 6009:127.0.0.1:6009  -p 32853 root@connect.nmb1.seetacloud.com

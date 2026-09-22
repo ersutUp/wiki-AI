@@ -22,7 +22,7 @@ class DotsOCRParser:
     def __init__(self, 
             protocol='http',
             ip='localhost',
-            port=9180,
+            port=6009,
             model_name='dotsmorc:1.5',
             temperature=0.1,
             top_p=1.0,

@@ -15,7 +15,10 @@ from pathlib import Path
 
 from PIL import Image
 
+from config.logger import get_app_logger
 from utils.model_loader import get_model
+
+_logger = get_app_logger("vector")
 
 
 def _ensure_image(image: Union[str, Path, Image.Image]) -> Image.Image:
@@ -42,7 +45,9 @@ def text_to_vector(
         向量列表 list[float]
     """
     enc = get_model(model)
+    _logger.debug("纯文本向量化，文本长度: %d", len(text))
     vec = enc.encode([{"text": text}], normalize_embeddings=normalize)
+    _logger.debug("纯文本向量化完成，向量维度: %d", len(vec[0]))
     return vec[0].tolist()
 
 
@@ -68,7 +73,9 @@ def text_image_to_vector(
     """
     enc = get_model(model)
     img = _ensure_image(image)
+    _logger.debug("图文联合向量化，文本长度: %d", len(text))
     vec = enc.encode([{"text": text, "image": img}], normalize_embeddings=normalize)
+    _logger.debug("图文联合向量化完成，向量维度: %d", len(vec[0]))
     return vec[0].tolist()
 
 
@@ -91,6 +98,7 @@ def texts_to_vectors(
         向量列表的列表 list[list[float]]
     """
     enc = get_model(model)
+    _logger.info("批量文本向量化，共 %d 条，batch_size=%d", len(texts), batch_size)
     inputs: list[dict] = [{"text": t} for t in texts]
     vecs = enc.encode(
         inputs,
@@ -98,5 +106,6 @@ def texts_to_vectors(
         batch_size=batch_size,
         show_progress_bar=False,
     )
+    _logger.info("批量文本向量化完成，输出形状: %s", getattr(vecs, "shape", f"len={len(vecs)}"))
     return vecs.tolist()
 

@@ -2,15 +2,20 @@
 OCR 文档向量化入库流水线
 
 流程：
-1. 用 MarkdownDirectorySplitter 按标题切分 OCR 产物目录（每页一个 _page_N.md）
-2. 文本块：正文直接做文本向量化
-3. 图片块：多模态 LLM 结合前后文生成摘要 → 摘要 + 图片联合向量化
-4. 组装为 OcrDocument 写入 Milvus
+1. 用 DotsOCRParser 解析 PDF / 图片文件，产出每页的 Markdown
+2. 用 MarkdownDirectorySplitter 按标题切分 OCR 产物目录（每页一个 _page_N.md）
+3. 文本块：正文直接做文本向量化
+4. 图片块：多模态 LLM 结合前后文生成摘要 → 摘要 + 图片联合向量化
+5. 组装为 OcrDocument 写入 Milvus
 """
+import os
+
 import requests
 from langchain_core.documents import Document
 from pymilvus import MilvusClient
 
+from config.logger import get_app_logger
+from dots_ocr.parser import DotsOCRParser
 from schema import OcrDocument, OcrFileType
 from splitter import split_markdown_directory
 from splitter.MarkDownSplitter import (
@@ -30,9 +35,12 @@ MILVUS_URI = "http://localhost:19530"
 # 入库目标集合名
 COLLECTION_NAME = "ocr_documents"
 
+_logger = get_app_logger("ocr_to_milvus")
+
 
 def describe_image(image_path: str, preceding: str, following: str) -> str | None:
     """调用多模态 API 描述图片，失败时打印详细错误并返回 None"""
+    _logger.info("开始生成图片描述，图片路径: %s", image_path)
     payload = {
         "model": "qwen3-vl-plus",
         "messages": [{
@@ -55,15 +63,17 @@ def describe_image(image_path: str, preceding: str, following: str) -> str | Non
             timeout=120,
         )
         if resp.status_code != 200:
-            print(f"❌ API HTTP {resp.status_code}: {resp.text[:500]}")
+            _logger.error("图片描述 API HTTP %d: %s", resp.status_code, resp.text[:500])
             return None
         body = resp.json()
         if body.get("code"):
-            print(f"❌ API 业务错误 code={body['code']} code_msg={body.get('code_msg', '')}")
+            _logger.error("图片描述 API 业务错误 code=%s code_msg=%s", body["code"], body.get("code_msg", ""))
             return None
-        return body["choices"][0]["message"]["content"]
+        content = body["choices"][0]["message"]["content"]
+        _logger.info("图片描述生成成功，内容长度: %d", len(content))
+        return content
     except Exception as e:
-        print(f"❌ 请求异常: {e}")
+        _logger.exception("图片描述请求异常: %s", e)
         return None
 
 
@@ -77,6 +87,8 @@ def doc_to_record(doc: Document, source: str) -> OcrDocument | None:
     doc_type = doc.metadata.get(KEY_DOC_TYPE)
     start_page = doc.metadata.get(KEY_START_PAGE)
     end_page = doc.metadata.get(KEY_END_PAGE)
+
+    _logger.info("转换 Document → OcrDocument，doc_type=%s，页码: %s-%s", doc_type, start_page, end_page)
 
     # 基础元数据：页码范围 + 标题链（h1 > h2 > h3，缺失的层级自动跳过）
     record = OcrDocument(
@@ -112,6 +124,7 @@ def doc_to_record(doc: Document, source: str) -> OcrDocument | None:
         record.content = doc.page_content
         record.embeddings = text_to_vector(doc.page_content)
     else:
+        _logger.warning("未知 doc_type: %s，跳过该块", doc_type)
         return None
 
     return record
@@ -131,22 +144,79 @@ def ingest_to_milvus(
         uri: Milvus 服务地址
         collection_name: 目标集合名（需已建好 schema）
     """
+    _logger.info("开始入库，目录: %s，来源: %s，集合: %s", dir_path, source, collection_name)
     client = MilvusClient(uri=uri)
     # 按标题切分，得到有序的文本块与图片块
     split_doc: list[Document] = split_markdown_directory(dir_path)
+    _logger.info("目录切分完成，共 %d 个块", len(split_doc))
+    inserted = 0
+    skipped = 0
     for doc in split_doc:
         # 返回 None 表示该块无法处理（如图片描述生成失败），跳过不入库
         record = doc_to_record(doc, source)
         if record is None:
+            skipped += 1
             continue
         client.insert(collection_name, [record.to_dict()])
+        inserted += 1
+    _logger.info("入库完成，成功: %d，跳过: %d，总计: %d", inserted, skipped, len(split_doc))
+
+
+def process_file_to_milvus(
+    input_path: str,
+    source: str = "",
+    output_dir: str = "./output",
+    prompt_mode: str = "prompt_layout_all_en",
+    fitz_preprocess: bool = True,
+    parser_kwargs: dict | None = None,
+    uri: str = MILVUS_URI,
+    collection_name: str = COLLECTION_NAME,
+) -> None:
+    """
+    完整流水线：OCR 解析文件 → 按标题切分 → 向量化 → 写入 Milvus
+
+    参数：
+        input_path: 待解析的 PDF / 图片文件路径
+        source: 来源标识，默认取文件名
+        output_dir: OCR 产物根目录（产物在 <output_dir>/<文件名>/ 下）
+        prompt_mode: OCR 解析提示模式，默认 prompt_layout_all_en
+        fitz_preprocess: 是否对图片做 fitz 上采样预处理（仅图片生效，PDF 已按 dpi 渲染）
+        parser_kwargs: DotsOCRParser 额外构造参数（如 ip / port / model_name / num_thread / dpi）
+        uri: Milvus 服务地址
+        collection_name: 目标集合名
+    """
+    _logger.info("流水线启动，输入文件: %s", input_path)
+    # ① OCR 解析：产物保存到 <output_dir>/<文件名>/，每页一个 <文件名>_page_N.md
+    parser = DotsOCRParser(output_dir=output_dir, **(parser_kwargs or {}))
+    parser.parse_file(
+        input_path,
+        prompt_mode=prompt_mode,
+        fitz_preprocess=fitz_preprocess,
+    )
+    _logger.info("OCR 解析完成，输入文件: %s", input_path)
+
+    # ② 计算 OCR 产物目录（parse_file 内部按文件名建同名子目录）
+    filename = os.path.splitext(os.path.basename(input_path))[0]
+    md_dir = os.path.join(os.path.abspath(output_dir), filename)
+
+    # ③ 切分 + 向量化 + 入库
+    ingest_to_milvus(md_dir, source or filename, uri=uri, collection_name=collection_name)
+    _logger.info("流水线完成，输入文件: %s", input_path)
 
 
 if __name__ == "__main__":
+    from config.logger import configure_logging
+    configure_logging()
+    # 完整流水线入口：输入一个 PDF / 图片文件，OCR 识别 → 切分 → 向量化 → 入库
+    # 注意：需要先启动 dots_ocr 的 vllm 服务（默认 localhost:9180）和 Milvus
+    parser_kwargs = {
+        "ip" : "localhost",
+        "port" : 6009,
+    }
 
-    # dir_path 为 OCR 产物目录，source 为本次入库的文档来源标识
-    ingest_to_milvus(
-        "/Users/ersut/my/code/wiki-AI/project/graphRAG/output/PDF合并",
-        source="文件路径",
+    process_file_to_milvus(
+        "/output/01_尚硅谷大数据技术之ClickHouse入门V1.01.pdf",
+        output_dir="/Us/code/wiki-AI/project/graphRAG/output",
+        parser_kwargs=parser_kwargs,
     )
     print("okk")
