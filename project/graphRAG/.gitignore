@@ -1,0 +1,5 @@
+# OCR 产物与中间数据
+output/
+
+# Milvus Docker 数据卷
+volumes/

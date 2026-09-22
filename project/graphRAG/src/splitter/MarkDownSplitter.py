@@ -453,18 +453,22 @@ class MarkdownDirectorySplitter:
                 if img_id not in image_registry:
                     continue
                 img_info = image_registry[img_id]
+                img_meta = {
+                    KEY_DOC_TYPE: DOC_TYPE_IMAGE,
+                    KEY_IMAGE_PATH: img_info[KEY_PATH],
+                    KEY_ALT: img_info[KEY_ALT],
+                    KEY_PAGE: img_info[KEY_PAGE],
+                    KEY_PRECEDING_TEXT: '',
+                    KEY_FOLLOWING_TEXT: '',
+                    KEY_START_PAGE: doc.metadata.get(KEY_START_PAGE),
+                    KEY_END_PAGE: doc.metadata.get(KEY_END_PAGE),
+                }
+                for level in ('h1', 'h2', 'h3'):
+                    if level in doc.metadata:
+                        img_meta[level] = doc.metadata[level]
                 results.insert(i, Document(
                     page_content="",
-                    metadata={
-                        KEY_DOC_TYPE: DOC_TYPE_IMAGE,
-                        KEY_IMAGE_PATH: img_info[KEY_PATH],
-                        KEY_ALT: img_info[KEY_ALT],
-                        KEY_PAGE: img_info[KEY_PAGE],
-                        KEY_PRECEDING_TEXT: '',
-                        KEY_FOLLOWING_TEXT: '',
-                        KEY_START_PAGE: doc.metadata.get(KEY_START_PAGE),
-                        KEY_END_PAGE: doc.metadata.get(KEY_END_PAGE),
-                    }
+                    metadata=img_meta,
                 ))
                 i += 1
 
