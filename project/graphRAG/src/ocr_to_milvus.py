@@ -15,7 +15,7 @@ from langchain_core.documents import Document
 from pymilvus import MilvusClient
 
 from config.logger import get_app_logger
-from dots_ocr.parser import DotsOCRParser
+from dots_ocr import DotsOCRParser
 from schema import OcrDocument, OcrFileType
 from splitter import split_markdown_directory
 from splitter.MarkDownSplitter import (
@@ -26,9 +26,10 @@ from splitter.MarkDownSplitter import (
     DOC_TYPE_IMAGE,
     DOC_TYPE_TEXT, KEY_START_PAGE, KEY_END_PAGE,
 )
-from utils.env_utils import LLM_API_KEY, LLM_BASE_URL
+from utils.env_utils import LLM_API_KEY, LLM_BASE_URL, NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD, NEO4J_DATABASE
 from utils.image_encoder import image_to_base64
 from vector import text_to_vector, text_image_to_vector
+from utils.neo4j_graph import extract_and_store as neo4j_extract_and_store
 
 # Milvus 服务地址
 MILVUS_URI = "http://localhost:19530"
@@ -135,7 +136,7 @@ def ingest_to_milvus(
     source: str,
     uri: str = MILVUS_URI,
     collection_name: str = COLLECTION_NAME,
-) -> None:
+) -> list[Document]:
     """切分目录、向量化并写入 Milvus
 
     参数：
@@ -160,7 +161,7 @@ def ingest_to_milvus(
         client.insert(collection_name, [record.to_dict()])
         inserted += 1
     _logger.info("入库完成，成功: %d，跳过: %d，总计: %d", inserted, skipped, len(split_doc))
-
+    return split_doc
 
 def process_file_to_milvus(
     input_path: str,
@@ -171,9 +172,14 @@ def process_file_to_milvus(
     parser_kwargs: dict | None = None,
     uri: str = MILVUS_URI,
     collection_name: str = COLLECTION_NAME,
+    enable_neo4j: bool = True,
+    neo4j_uri: str = NEO4J_URI,
+    neo4j_username: str = NEO4J_USERNAME,
+    neo4j_password: str = NEO4J_PASSWORD,
+    neo4j_database: str = NEO4J_DATABASE,
 ) -> None:
     """
-    完整流水线：OCR 解析文件 → 按标题切分 → 向量化 → 写入 Milvus
+    完整流水线：OCR 解析文件 → 按标题切分 → 向量化 → 写入 Milvus → 实体抽取写入 Neo4j
 
     参数：
         input_path: 待解析的 PDF / 图片文件路径
@@ -184,6 +190,8 @@ def process_file_to_milvus(
         parser_kwargs: DotsOCRParser 额外构造参数（如 ip / port / model_name / num_thread / dpi）
         uri: Milvus 服务地址
         collection_name: 目标集合名
+        enable_neo4j: 是否同步抽取实体写入 Neo4j，默认开启
+        neo4j_uri / neo4j_username / neo4j_password / neo4j_database: Neo4j 连接参数
     """
     _logger.info("流水线启动，输入文件: %s", input_path)
     # ① OCR 解析：产物保存到 <output_dir>/<文件名>/，每页一个 <文件名>_page_N.md
@@ -197,10 +205,34 @@ def process_file_to_milvus(
 
     # ② 计算 OCR 产物目录（parse_file 内部按文件名建同名子目录）
     filename = os.path.splitext(os.path.basename(input_path))[0]
+    effective_source = source or filename
     md_dir = os.path.join(os.path.abspath(output_dir), filename)
 
-    # ③ 切分 + 向量化 + 入库
-    ingest_to_milvus(md_dir, source or filename, uri=uri, collection_name=collection_name)
+    # ③ 切分 + 向量化 + 入库 Milvus
+    split_docs = ingest_to_milvus(md_dir, effective_source, uri=uri, collection_name=collection_name)
+
+    # ④ 实体抽取 + 入库 Neo4j
+    # 只取文本块：图片块的语义已由 ③ 中多模态 LLM 转化为摘要并入库 Milvus，
+    # 把原始图片路径送给 LLMGraphTransformer 没有意义，故跳过。
+    # split_markdown_directory 在 ③ 内部已调用过，但其结果未向上返回，
+    # 此处重新调用以获取块列表（IO 代价低，目录已在本地磁盘）。
+    if enable_neo4j:
+        _logger.info("开始 Neo4j 实体抽取步骤，目录: %s", md_dir)
+        text_docs = [
+            doc for doc in split_docs
+            if doc.metadata.get(KEY_DOC_TYPE) == DOC_TYPE_TEXT
+        ]
+        # 将来源信息写入 metadata，便于 neo4j_graph 模块在日志中溯源到原始文件
+        for doc in text_docs:
+            doc.metadata.setdefault("source", effective_source)
+        neo4j_extract_and_store(
+            text_docs,
+            uri=neo4j_uri,
+            username=neo4j_username,
+            password=neo4j_password,
+            database=neo4j_database,
+        )
+
     _logger.info("流水线完成，输入文件: %s", input_path)
 
 
@@ -216,7 +248,7 @@ if __name__ == "__main__":
 
     process_file_to_milvus(
         "/output/01_尚硅谷大数据技术之ClickHouse入门V1.01.pdf",
-        output_dir="/Us/code/wiki-AI/project/graphRAG/output",
+        output_dir="/Users/ersut/my/code/wiki-AI/project/graphRAG/output",
         parser_kwargs=parser_kwargs,
     )
     print("okk")
